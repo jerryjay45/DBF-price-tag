@@ -29,19 +29,11 @@ def _save_settings(data):
     except: pass
 
 _LABEL_SIZES = [
-    (38, 21,  "38 × 21 mm  (small price tag)", False),
-    (50, 30,  "50 × 30 mm  (standard shelf)",  False),
-    (70, 40,  "70 × 40 mm  (large shelf)",     False),
-    (100,50,  "100 × 50 mm  (case label)",     False),
-    ("A4",    None, "A4  (210 × 297 mm)",      True),
-    ("Letter",None, "Letter  (216 × 279 mm)",  True),
-    ("Legal", None, "Legal  (216 × 356 mm)",   True),
-    ("POS57", None, "POS Roll  57 mm wide",    True),
-    ("POS76", None, "POS Roll  76 mm wide",    True),
-    ("POS80", None, "POS Roll  80 mm wide",    True),
+    ("Letter", None, "Letter  (216 × 279 mm)", True),
+    ("A4",     None, "A4  (210 × 297 mm)",     True),
+    ("Legal",  None, "Legal  (216 × 356 mm)",  True),
 ]
-_PAGE_COLS  = {"A4":3,"Letter":3,"Legal":3,"POS57":1,"POS76":1,"POS80":1}
-_POS_WIDTHS = {"POS57":57,"POS76":76,"POS80":80}
+_PAGE_COLS  = {"A4":3,"Letter":3,"Legal":3}
 
 class _DBFLoader(QThread):
     progress = pyqtSignal(int,int)
@@ -87,16 +79,15 @@ class _DBFLoader(QThread):
 
 def _draw_label(painter, rect, product, options, preview=False):
     show_name=options.get("show_name",True); show_price=options.get("show_price",True)
-    show_barcode=options.get("show_barcode",True)
     name=product.get("name",""); price=product.get("price",0.0)
-    barcode=product.get("barcode",""); gct_ok=product.get("gct_applicable",False)
+    gct_ok=product.get("gct_applicable",False)
     disc_rows=product.get("disc_rows",[])
     x=rect.x(); y=rect.y(); w=rect.width(); h=rect.height()
     w_mm=options.get("label_w_mm",50); h_mm=options.get("label_h_mm",30)
     px_per_mm=w/max(w_mm,1)
 
     name_pt  = max(h_mm*0.38, 7.0)
-    price_pt = max(h_mm*0.50, 10.0)
+    price_pt = 15.0
     gct_pt   = max(h_mm*0.28, 5.5)
     disc_pt  = max(h_mm*0.28, 10.5)
     pad=max(2.0*px_per_mm,2.0)
@@ -276,9 +267,18 @@ class PriceTagPrinter(QMainWindow):
         card=QFrame(); card.setStyleSheet(f"background:{WHITE};border-radius:10px;border:1px solid {BORDER};")
         lay=QVBoxLayout(card); lay.setContentsMargins(12,12,12,12); lay.setSpacing(8)
         lay.addWidget(_sec("Products"))
+        # Search with clear button
+        sb=QHBoxLayout(); sb.setSpacing(4)
         self.search=QLineEdit(); self.search.setPlaceholderText("🔍  Search by name or barcode…"); self.search.setFixedHeight(34)
         self.search.setStyleSheet(f"QLineEdit{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 10px;font-size:12px;}}QLineEdit:focus{{border-color:{AMBER};}}")
-        self.search.textChanged.connect(self._filter); lay.addWidget(self.search)
+        self.search.textChanged.connect(self._filter)
+        clr_search=QPushButton("✕"); clr_search.setFixedSize(34,34)
+        clr_search.setCursor(Qt.CursorShape.PointingHandCursor)
+        clr_search.setToolTip("Clear search")
+        clr_search.setStyleSheet(f"QPushButton{{background:{BORDER};color:{DARK_CARD};border:none;border-radius:7px;font-size:13px;font-weight:700;}}QPushButton:hover{{background:{AMBER};color:white;}}")
+        clr_search.clicked.connect(lambda:(self.search.clear(),self.search.setFocus()))
+        sb.addWidget(self.search,stretch=1); sb.addWidget(clr_search)
+        lay.addLayout(sb)
         sr=QHBoxLayout(); sr.setSpacing(6)
         sa=_obtn("☑  Select All"); sa.clicked.connect(self._sel_all)
         cl=_obtn("☐  Clear"); cl.clicked.connect(self._clear_sel)
@@ -340,8 +340,8 @@ class PriceTagPrinter(QMainWindow):
         self.cols_spin.setStyleSheet(f"QSpinBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 8px;font-size:12px;}}QSpinBox:focus{{border-color:{AMBER};}}")
         cr.addWidget(self.cols_spin); cr.addStretch(); lay.addWidget(self.cols_row)
         lay.addWidget(_dv()); lay.addWidget(_sec("Show on Label"))
-        self.chk_name=_tog("Product Name"); self.chk_price=_tog("Price"); self.chk_barcode=_tog("Barcode")
-        for c in (self.chk_name,self.chk_price,self.chk_barcode):
+        self.chk_name=_tog("Product Name"); self.chk_price=_tog("Price")
+        for c in (self.chk_name,self.chk_price):
             c.stateChanged.connect(self._upd_prev); lay.addWidget(c)
         note=QLabel("  GCT and discounts shown automatically when present in DBF.",styleSheet=f"color:{MUTED};font-size:10px;"); note.setWordWrap(True); lay.addWidget(note)
         lay.addWidget(_dv())
@@ -462,7 +462,7 @@ class PriceTagPrinter(QMainWindow):
         w_mm=62 if is_page else w_val; h_mm=35 if is_page else h_val
         self.cols_row.setVisible(is_page)
         self.preview.set_options({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
-                                   "show_barcode":self.chk_barcode.isChecked(),"label_w_mm":w_mm,"label_h_mm":h_mm})
+                                   "label_w_mm":w_mm,"label_h_mm":h_mm})
         _save_settings({"last_size_index":self.size_combo.currentIndex(),"last_cols":self.cols_spin.value()})
 
     def _do_print(self,save_pdf):
@@ -476,24 +476,14 @@ class PriceTagPrinter(QMainWindow):
         entry=self.size_combo.currentData()
         if not entry: return
         w_val,h_val,_,is_page=entry
-        opts={"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),"show_barcode":self.chk_barcode.isChecked()}
+        opts={"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked()}
         try:
             from PyQt6.QtPrintSupport import QPrinter,QPrintPreviewDialog
             printer=QPrinter(QPrinter.PrinterMode.HighResolution)
             printer.setColorMode(QPrinter.ColorMode.GrayScale)
-            if is_page:
-                pos_w=_POS_WIDTHS.get(str(w_val))
-                if pos_w:
-                    printer.setPageLayout(QPageLayout(QPageSize(QSizeF(pos_w,297),QPageSize.Unit.Millimeter),QPageLayout.Orientation.Portrait,QMarginsF(2,2,2,2),QPageLayout.Unit.Millimeter))
-                    lw=pos_w-4; lh=30; cols=1
-                else:
-                    sm={"A4":QPageSize.PageSizeId.A4,"Letter":QPageSize.PageSizeId.Letter,"Legal":QPageSize.PageSizeId.Legal}
-                    printer.setPageLayout(QPageLayout(QPageSize(sm.get(str(w_val),QPageSize.PageSizeId.Letter)),QPageLayout.Orientation.Portrait,QMarginsF(8,8,8,8),QPageLayout.Unit.Millimeter))
-                    lw=62; lh=35; cols=self.cols_spin.value()
-            else:
-                lw=float(w_val); lh=float(h_val)
-                printer.setPageLayout(QPageLayout(QPageSize(QSizeF(lw,lh),QPageSize.Unit.Millimeter),QPageLayout.Orientation.Portrait,QMarginsF(0,0,0,0),QPageLayout.Unit.Millimeter))
-                cols=1
+            sm={"A4":QPageSize.PageSizeId.A4,"Letter":QPageSize.PageSizeId.Letter,"Legal":QPageSize.PageSizeId.Legal}
+            printer.setPageLayout(QPageLayout(QPageSize(sm.get(str(w_val),QPageSize.PageSizeId.Letter)),QPageLayout.Orientation.Portrait,QMarginsF(8,8,8,8),QPageLayout.Unit.Millimeter))
+            lw=62; lh=30; cols=self.cols_spin.value()
             do=dict(opts,label_w_mm=lw,label_h_mm=lh)
             if save_pdf:
                 pp,_=QFileDialog.getSaveFileName(self,"Save Labels as PDF","labels.pdf","PDF Files (*.pdf)")
@@ -520,19 +510,14 @@ class PriceTagPrinter(QMainWindow):
             return
         try:
             pr=printer.pageRect(QPrinter.Unit.DevicePixel); dpi=printer.resolution(); ppm=dpi/25.4
-            lw_px=lw*ppm; lh_px=lh*ppm; gap=3*ppm if is_page else 0
-            if is_page:
-                x0=pr.left(); y0=pr.top(); col=0; ry=y0
-                for i,d in enumerate(job):
-                    _draw_label(painter,QRectF(x0+col*(lw_px+gap),ry,lw_px,lh_px),d,opts)
-                    col+=1
-                    if col>=cols:
-                        col=0; ry+=lh_px+gap
-                        if ry+lh_px>pr.bottom() and i<len(job)-1: printer.newPage(); ry=y0
-            else:
-                for i,d in enumerate(job):
-                    if i>0: printer.newPage()
-                    _draw_label(painter,QRectF(pr.left(),pr.top(),lw_px,lh_px),d,opts)
+            lw_px=lw*ppm; lh_px=lh*ppm; gap=3*ppm
+            x0=pr.left(); y0=pr.top(); col=0; ry=y0
+            for i,d in enumerate(job):
+                _draw_label(painter,QRectF(x0+col*(lw_px+gap),ry,lw_px,lh_px),d,opts)
+                col+=1
+                if col>=cols:
+                    col=0; ry+=lh_px+gap
+                    if ry+lh_px>pr.bottom() and i<len(job)-1: printer.newPage(); ry=y0
         finally:
             painter.end()
 
