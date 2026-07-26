@@ -65,14 +65,19 @@ class _DBFLoader(QThread):
                 if not name or not barcode: continue
                 price = float(r.get("price") or r.get("priceg") or 0)
                 gct   = bool(r.get("gct", False))
-                disc_rows = []
+                disc_rows_raw = []
                 for qi,pi in [("quan1","percent1"),("quan2","percent2"),("quan3","percent3")]:
                     qty = float(r.get(qi) or 0)
                     pct = float(r.get(pi) or 0)
                     if qty > 0 and pct > 0:
-                        disc_rows.append((int(round(qty)),
-                                          round(price*(1-pct/100),2),
-                                          f"{round(pct,1):.1f}%"))
+                        disc_rows_raw.append((int(round(qty)),
+                                              round(price*(1-pct/100),2),
+                                              f"{round(pct,1):.1f}%"))
+                # Deduplicate and sort by min_qty (matches price_tag_tab behaviour)
+                seen = set(); disc_rows = []
+                for row in sorted(disc_rows_raw, key=lambda r: r[0]):
+                    if row[0] not in seen:
+                        seen.add(row[0]); disc_rows.append(row)
                 result.append({"name":name,"barcode":barcode,"price":price,
                                "gct_applicable":gct,"disc_rows":disc_rows,
                                "group":(r.get("group") or r.get("category") or "").strip()})
@@ -89,25 +94,47 @@ def _draw_label(painter, rect, product, options, preview=False):
     x=rect.x(); y=rect.y(); w=rect.width(); h=rect.height()
     w_mm=options.get("label_w_mm",50); h_mm=options.get("label_h_mm",30)
     px_per_mm=w/max(w_mm,1)
-    name_pt=max(h_mm*0.20,5.0); price_pt=max(h_mm*0.38,7.0)
-    gct_pt=max(h_mm*0.18,4.5); disc_pt=max(h_mm*0.22,6.0); bc_num_pt=max(h_mm*0.10,3.5)
+
+    name_pt  = max(h_mm*0.38, 7.0)
+    price_pt = max(h_mm*0.50, 10.0)
+    gct_pt   = max(h_mm*0.28, 5.5)
+    disc_pt  = max(h_mm*0.28, 10.5)
     pad=max(2.0*px_per_mm,2.0)
+
     painter.save(); painter.setClipRect(rect)
     pen_w=max(0.35*px_per_mm,0.8)
     painter.setPen(QPen(QColor("#000000"),pen_w)); painter.setBrush(QBrush(QColor("#ffffff")))
     painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),max(1.5*px_per_mm,3.0),max(1.5*px_per_mm,3.0))
-    shown_disc=disc_rows[:2]
-    barcode_h=h*0.13 if show_barcode and barcode else 0
-    disc_h_each=h*0.15; disc_h=disc_h_each*len(shown_disc) if (show_price and shown_disc) else 0
-    remaining=h-barcode_h-disc_h-pad*2
-    name_h=remaining*0.35 if show_name else 0; price_h=remaining*0.55 if show_price else 0
-    cur_y=y+pad
+
+    shown_disc  = disc_rows[:2]
+    disc_h_each = h * 0.22
+    disc_h      = disc_h_each*len(shown_disc) if (show_price and shown_disc) else 0
+    name_avail_w = w - pad*2
+
+    name_font = QFont("Arial"); name_font.setPointSizeF(name_pt); name_font.setBold(True)
+    painter.setFont(name_font)
+
     if show_name and name:
-        font=QFont("Arial"); font.setPointSizeF(name_pt); font.setBold(True)
-        painter.setFont(font); painter.setPen(QColor("#000000"))
-        painter.drawText(QRectF(x+pad,cur_y,w-pad*2,name_h),
+        needed_name_h = painter.boundingRect(
+            QRectF(0,0,name_avail_w,h*2),
+            Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignTop|Qt.TextFlag.TextWordWrap,
+            name
+        ).height() + pad*0.5
+    else:
+        needed_name_h = 0
+
+    remaining = h - disc_h - pad*2
+    name_h    = min(needed_name_h, remaining*0.45) if show_name else 0
+    price_h   = remaining - name_h if show_price else 0
+
+    cur_y = y + pad
+
+    if show_name and name:
+        painter.setPen(QColor("#000000"))
+        painter.drawText(QRectF(x+pad,cur_y,name_avail_w,name_h),
             Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignTop|Qt.TextFlag.TextWordWrap,name)
-        cur_y+=name_h
+        cur_y += name_h
+
     if show_price:
         price_str=f"${price:.2f}"
         font=QFont("Arial"); font.setPointSizeF(price_pt); font.setBold(True)
@@ -121,7 +148,8 @@ def _draw_label(painter, rect, product, options, preview=False):
             painter.drawText(QRectF(x+pad+price_px+pad*0.4,cur_y+price_h*0.20,
                 w-pad*2-price_px-pad,price_h*0.65),
                 Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,"+GCT")
-        cur_y+=price_h
+        cur_y += price_h
+
         for (min_qty,disc_price,pct_str) in shown_disc:
             font=QFont("Arial"); font.setPointSizeF(disc_pt); font.setBold(True)
             painter.setFont(font)
@@ -132,11 +160,10 @@ def _draw_label(painter, rect, product, options, preview=False):
             painter.setPen(QColor("#444444"))
             painter.drawText(tr,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter,
                              f"Discount {pct_str}")
-            cur_y+=disc_h_each
-    if show_barcode and barcode and barcode_h>2:
-        _draw_barcode_bars(painter,QRectF(x+pad,cur_y+pad*0.3,w-pad*2,barcode_h-pad*0.5),
-                           barcode,preview,bc_num_pt)
+            cur_y += disc_h_each
+
     painter.restore()
+
 
 def _draw_barcode_bars(painter,rect,text,preview=False,num_pt=5.0):
     painter.save(); painter.setClipRect(rect)
@@ -214,6 +241,7 @@ class PriceTagPrinter(QMainWindow):
         self.setWindowTitle("Price Tag Printer — DBF Edition")
         self.setMinimumSize(1100,680)
         self._all=[]; self._filtered=[]; self._selected=set(); self._map={}
+        self._page=0; self._per_page=100; self._total=0
         self._settings=_load_settings(); self._loader=None
         self._build()
         last=self._settings.get("last_dbf_path","")
@@ -267,10 +295,29 @@ class PriceTagPrinter(QMainWindow):
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.tbl.verticalHeader().setVisible(False); self.tbl.setShowGrid(False)
-        self.tbl.setAlternatingRowColors(True); self.tbl.setStyleSheet(_tbl())
+        self.tbl.setAlternatingRowColors(True)
+        self.tbl.setStyleSheet(
+            f"QTableWidget{{background:{WHITE};border:none;font-size:12px;color:{DARK_CARD};}}"
+            f"QTableWidget{{alternate-background-color:#F7F6F3;}}"
+            f"QTableWidget::item{{padding:6px 8px;border-bottom:1px solid {BORDER_LIGHT};}}"
+            f"QTableWidget::item:selected{{background:{AMBER_BG};color:{DARK_CARD};}}"
+            f"QHeaderView::section{{background:{DARK_CARD};color:{AMBER};font-size:11px;"
+            f"font-weight:700;padding:6px 8px;border:none;border-right:1px solid #444;}}")
         self.tbl.currentItemChanged.connect(self._row_changed)
         self.tbl.itemChanged.connect(self._chk_changed); lay.addWidget(self.tbl,stretch=1)
-        self.cnt=QLabel("",styleSheet=f"color:{MUTED};font-size:10px;"); lay.addWidget(self.cnt)
+
+        # Pagination
+        self._page = 0; self._per_page = 100; self._total = 0
+        pg=QHBoxLayout(); pg.setSpacing(8)
+        self._pg_prev=_obtn("← Prev"); self._pg_prev.setFixedWidth(80)
+        self._pg_prev.clicked.connect(self._prev_page)
+        self._pg_lbl=QLabel("",styleSheet=f"color:{MUTED};font-size:10px;")
+        self._pg_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pg_next=_obtn("Next →"); self._pg_next.setFixedWidth(80)
+        self._pg_next.clicked.connect(self._next_page)
+        pg.addStretch(); pg.addWidget(self._pg_prev); pg.addWidget(self._pg_lbl)
+        pg.addWidget(self._pg_next); pg.addStretch()
+        lay.addLayout(pg)
         return card
 
     def _right(self):
@@ -327,23 +374,35 @@ class PriceTagPrinter(QMainWindow):
         self._loader=_DBFLoader(path,self)
         self._loader.progress.connect(lambda d,t:(self.prog.setMaximum(t),self.prog.setValue(d)))
         self._loader.done.connect(self._loaded)
-        self._loader.error.connect(lambda e:(self.prog.setVisible(False),QMessageBox.critical(self,"Load Error",e)))
+        self._loader.error.connect(lambda e:(self.prog.setVisible(False),self.status.setText(""),QMessageBox.critical(self,"Load Error",e)))
         self._loader.start(); _save_settings({"last_dbf_path":path})
 
     def _loaded(self,products):
         self._all=products; self._map={p["barcode"]:p for p in products}
         self._selected.clear(); self.prog.setVisible(False)
+        self._page=0
         self.status.setText(f"Loaded {len(products):,} products"); self._filter()
 
     def _filter(self):
         q=self.search.text().strip().lower()
         self._filtered=[p for p in self._all if not q or q in p["name"].lower() or q in p["barcode"].lower()]
-        self._fill_tbl()
+        self._total=len(self._filtered)
+        self._page=0; self._fill_tbl()
+
+    def _prev_page(self):
+        if self._page > 0: self._page -= 1; self._fill_tbl()
+
+    def _next_page(self):
+        pages=max(1,(self._total+self._per_page-1)//self._per_page)
+        if self._page < pages-1: self._page += 1; self._fill_tbl()
 
     def _fill_tbl(self):
         t=self.tbl; t.blockSignals(True); t.setRowCount(0)
-        for row,p in enumerate(self._filtered):
-            t.insertRow(row); t.setRowHeight(row,32)
+        pages=max(1,(self._total+self._per_page-1)//self._per_page)
+        start=self._page*self._per_page
+        page_products=self._filtered[start:start+self._per_page]
+        for row,p in enumerate(page_products):
+            t.insertRow(row); t.setRowHeight(row,30)
             chk=QTableWidgetItem()
             chk.setData(Qt.ItemDataRole.UserRole,p["barcode"])
             chk.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|Qt.ItemFlag.ItemIsUserCheckable)
@@ -357,7 +416,11 @@ class PriceTagPrinter(QMainWindow):
             di=QTableWidgetItem(f"{disc[0][0]}+ @ {disc[0][2]}" if disc else "—")
             di.setForeground(QColor(GREEN if disc else MUTED))
             di.setTextAlignment(Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignVCenter); t.setItem(row,3,di)
-        t.blockSignals(False); self.cnt.setText(f"{len(self._filtered):,} products"); self._upd_sel()
+        t.blockSignals(False)
+        self._pg_lbl.setText(f"Page {self._page+1} of {pages}  ({self._total:,})")
+        self._pg_prev.setEnabled(self._page>0)
+        self._pg_next.setEnabled(self._page<pages-1)
+        self._upd_sel()
 
     def _chk_changed(self,item):
         if item.column()!=0: return
@@ -436,33 +499,42 @@ class PriceTagPrinter(QMainWindow):
                 pp,_=QFileDialog.getSaveFileName(self,"Save Labels as PDF","labels.pdf","PDF Files (*.pdf)")
                 if not pp: return
                 printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat); printer.setOutputFileName(pp)
-                pa=QPainter()
-                if pa.begin(printer): self._render(printer,pa,job,lw,lh,cols,is_page,do); pa.end()
+                self._render(printer,job,lw,lh,cols,is_page,do)
                 self.status.setText(f"✅  Saved {len(job)} label(s) to PDF.")
             else:
                 dlg=QPrintPreviewDialog(printer,self); dlg.setWindowTitle("Price Tag Preview")
-                dlg.paintRequested.connect(lambda pa:self._render(printer,pa,job,lw,lh,cols,is_page,do))
+                # paintRequested passes a QPainter, not QPrinter — capture printer separately
+                def _paint(_printer=printer, _job=job, _lw=lw, _lh=lh,
+                           _cols=cols, _is_page=is_page, _do=do):
+                    self._render(_printer, _job, _lw, _lh, _cols, _is_page, _do)
+                dlg.paintRequested.connect(lambda _: _paint())
                 dlg.resize(1000,700); dlg.exec()
                 self.status.setText(f"✅  Sent {len(job)} label(s) to printer.")
         except Exception as e:
             self.status.setText(f"❌  {e}"); import traceback; traceback.print_exc()
 
-    def _render(self,printer,painter,job,lw,lh,cols,is_page,opts):
+    def _render(self,printer,job,lw,lh,cols,is_page,opts):
         from PyQt6.QtPrintSupport import QPrinter
-        pr=printer.pageRect(QPrinter.Unit.DevicePixel); dpi=printer.resolution(); ppm=dpi/25.4
-        lw_px=lw*ppm; lh_px=lh*ppm; gap=3*ppm if is_page else 0
-        if is_page:
-            x0=pr.left(); y0=pr.top(); col=0; ry=y0
-            for i,d in enumerate(job):
-                _draw_label(painter,QRectF(x0+col*(lw_px+gap),ry,lw_px,lh_px),d,opts)
-                col+=1
-                if col>=cols:
-                    col=0; ry+=lh_px+gap
-                    if ry+lh_px>pr.bottom() and i<len(job)-1: printer.newPage(); ry=y0
-        else:
-            for i,d in enumerate(job):
-                if i>0: printer.newPage()
-                _draw_label(painter,QRectF(pr.left(),pr.top(),lw_px,lh_px),d,opts)
+        painter = QPainter()
+        if not painter.begin(printer):
+            return
+        try:
+            pr=printer.pageRect(QPrinter.Unit.DevicePixel); dpi=printer.resolution(); ppm=dpi/25.4
+            lw_px=lw*ppm; lh_px=lh*ppm; gap=3*ppm if is_page else 0
+            if is_page:
+                x0=pr.left(); y0=pr.top(); col=0; ry=y0
+                for i,d in enumerate(job):
+                    _draw_label(painter,QRectF(x0+col*(lw_px+gap),ry,lw_px,lh_px),d,opts)
+                    col+=1
+                    if col>=cols:
+                        col=0; ry+=lh_px+gap
+                        if ry+lh_px>pr.bottom() and i<len(job)-1: printer.newPage(); ry=y0
+            else:
+                for i,d in enumerate(job):
+                    if i>0: printer.newPage()
+                    _draw_label(painter,QRectF(pr.left(),pr.top(),lw_px,lh_px),d,opts)
+        finally:
+            painter.end()
 
 def main():
     app=QApplication(sys.argv); app.setApplicationName("Price Tag Printer"); app.setStyle("Fusion")
