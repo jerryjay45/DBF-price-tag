@@ -108,8 +108,8 @@ def _draw_label(painter, rect, product, options, preview=False):
 
     name_pt  = max(h_mm*0.38, 7.0)
     price_pt = 15.0
-    gct_pt   = max(h_mm*0.28, 6.0)
-    disc_pt  = max(h_mm*0.26, 10.0)
+    gct_pt   = max(h_mm*0.28, 10.0)
+    disc_pt  = max(h_mm*0.28, 8.0)
     barcode_pt = max(h_mm*0.18, 6.0)
     pad=max(2.0*px_per_mm,2.0)
 
