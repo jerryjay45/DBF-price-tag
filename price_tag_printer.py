@@ -47,7 +47,11 @@ class _DBFLoader(QThread):
         except ImportError:
             self.error.emit("dbfread not installed.\nRun: pip install dbfread"); return
         try:
-            recs = list(DBF(self.path, lowernames=True, ignore_missing_memofile=True))
+            # ignorecase=False: dbfread otherwise does a case-insensitive filename
+            # match, which silently substitutes a different DBF if one exists in
+            # the same folder differing only by case (e.g. STOCK.DBF vs stock.DBF).
+            recs = list(DBF(self.path, lowernames=True, ignore_missing_memofile=True,
+                             ignorecase=False))
             result = []
             for i,rec in enumerate(recs):
                 self.progress.emit(i+1, len(recs))
@@ -58,9 +62,23 @@ class _DBFLoader(QThread):
                 price = float(r.get("price") or r.get("priceg") or 0)
                 gct   = bool(r.get("gct", False))
                 disc_rows_raw = []
-                for qi,pi in [("quan1","percent1"),("quan2","percent2"),("quan3","percent3")]:
+                # Some DBF variants don't carry percent1/2/3 columns at all and
+                # instead store the tiered discount as an already-discounted
+                # price in pricem1/2/3. When percent is missing/zero but a
+                # cheaper pricemN exists for that tier, derive the percentage
+                # from price vs pricemN instead.
+                for qi,pi,pmi in [("quan1","percent1","pricem1"),
+                                   ("quan2","percent2","pricem2"),
+                                   ("quan3","percent3","pricem3")]:
                     qty = float(r.get(qi) or 0)
+                    if qty <= 0: continue
                     pct = float(r.get(pi) or 0)
+                    if pct <= 0:
+                        pm = r.get(pmi)
+                        if pm is not None and price > 0:
+                            pm = float(pm)
+                            if 0 < pm < price:
+                                pct = (1 - pm/price) * 100
                     if qty > 0 and pct > 0:
                         disc_rows_raw.append((int(round(qty)),
                                               round(price*(1-pct/100),2),
