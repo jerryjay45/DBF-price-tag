@@ -231,12 +231,12 @@ class PriceTagPrinter(QMainWindow):
         super().__init__()
         self.setWindowTitle("Price Tag Printer — DBF Edition")
         self.setMinimumSize(1100,680)
-        self._all=[]; self._filtered=[]; self._selected=set(); self._map={}
+        self._all=[]; self._filtered=[]; self._selected={}; self._map={}  # barcode->qty
         self._page=0; self._per_page=100; self._total=0
         self._settings=_load_settings(); self._loader=None
         self._build()
-        last=self._settings.get("last_dbf_path","")
-        if last and os.path.isfile(last): self._load_dbf(last)
+        last_folder=self._settings.get("last_dbf_folder","")
+        if last_folder and os.path.isdir(last_folder): self._load_from_folder(last_folder)
 
     def _build(self):
         cw=QWidget(); self.setCentralWidget(cw); cw.setStyleSheet(f"background:{WARM_WHITE};")
@@ -252,7 +252,11 @@ class PriceTagPrinter(QMainWindow):
         self.file_lbl.setPlaceholderText("No DBF file loaded…")
         self.file_lbl.setStyleSheet(f"QLineEdit{{background:{DARK_2};color:{MUTED};border:1px solid {DARK_4};border-radius:7px;padding:0 10px;font-size:12px;}}")
         tl.addWidget(self.file_lbl)
-        br=_abtn("📂  Open DBF",h=32); br.clicked.connect(self._browse); tl.addWidget(br)
+        br=_abtn("📂  Open Folder",h=32); br.clicked.connect(self._browse); tl.addWidget(br)
+        ref=QPushButton("↻"); ref.setFixedSize(32,32); ref.setCursor(Qt.CursorShape.PointingHandCursor)
+        ref.setToolTip("Refresh — reload DBF from same folder")
+        ref.setStyleSheet(f"QPushButton{{background:{DARK_4};color:white;border:none;border-radius:7px;font-size:14px;font-weight:700;}}QPushButton:hover{{background:{AMBER};}}")
+        ref.clicked.connect(self._refresh); tl.addWidget(ref)
         root.addWidget(top)
         self.prog=QProgressBar(); self.prog.setFixedHeight(3); self.prog.setTextVisible(False)
         self.prog.setStyleSheet(f"QProgressBar{{background:{DARK_2};border:none;}}QProgressBar::chunk{{background:{AMBER};}}")
@@ -284,13 +288,14 @@ class PriceTagPrinter(QMainWindow):
         cl=_obtn("☐  Clear"); cl.clicked.connect(self._clear_sel)
         self.sel_lbl=QLabel("0 selected",styleSheet=f"color:{AMBER_DARK};font-size:12px;font-weight:600;")
         sr.addWidget(sa); sr.addWidget(cl); sr.addStretch(); sr.addWidget(self.sel_lbl); lay.addLayout(sr)
-        self.tbl=QTableWidget(); self.tbl.setColumnCount(4)
-        self.tbl.setHorizontalHeaderLabels(["","Product","Price","Discounts"])
+        self.tbl=QTableWidget(); self.tbl.setColumnCount(5)
+        self.tbl.setHorizontalHeaderLabels(["","Product","Price","Discounts","Qty"])
         hh=self.tbl.horizontalHeader()
         hh.setSectionResizeMode(0,QHeaderView.ResizeMode.Fixed); self.tbl.setColumnWidth(0,32)
         hh.setSectionResizeMode(1,QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(2,QHeaderView.ResizeMode.ResizeToContents)
         hh.setSectionResizeMode(3,QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(4,QHeaderView.ResizeMode.Fixed); self.tbl.setColumnWidth(4,54)
         self.tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tbl.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -344,12 +349,7 @@ class PriceTagPrinter(QMainWindow):
         for c in (self.chk_name,self.chk_price):
             c.stateChanged.connect(self._upd_prev); lay.addWidget(c)
         note=QLabel("  GCT and discounts shown automatically when present in DBF.",styleSheet=f"color:{MUTED};font-size:10px;"); note.setWordWrap(True); lay.addWidget(note)
-        lay.addWidget(_dv())
-        cr2=QHBoxLayout(); cr2.setSpacing(8); cr2.addWidget(_fl("Copies per product:"))
-        self.copies=QSpinBox(); self.copies.setRange(1,999); self.copies.setValue(1)
-        self.copies.setFixedHeight(32); self.copies.setFixedWidth(70)
-        self.copies.setStyleSheet(f"QSpinBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 8px;font-size:12px;}}QSpinBox:focus{{border-color:{AMBER};}}")
-        cr2.addWidget(self.copies); cr2.addStretch(); lay.addLayout(cr2); lay.addStretch()
+        lay.addStretch()
         self.status=QLabel("",styleSheet=f"color:{GREEN};font-size:11px;"); self.status.setWordWrap(True)
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter); lay.addWidget(self.status)
         self.print_btn=QPushButton("🖨  Preview && Print"); self.print_btn.setFixedHeight(42)
@@ -363,9 +363,27 @@ class PriceTagPrinter(QMainWindow):
         return card
 
     def _browse(self):
-        last=self._settings.get("last_dbf_path","")
-        path,_=QFileDialog.getOpenFileName(self,"Open DBF Stock File",os.path.dirname(last) if last else "","DBF Files (*.dbf *.DBF);;All Files (*)")
-        if path: self._load_dbf(path)
+        last=self._settings.get("last_dbf_folder","")
+        folder=QFileDialog.getExistingDirectory(self,"Select Folder Containing STOCK.DBF",last or "")
+        if not folder: return
+        _save_settings({"last_dbf_folder":folder})
+        self._load_from_folder(folder)
+
+    def _load_from_folder(self, folder):
+        # Detect DBF file case-insensitively
+        import glob
+        matches = glob.glob(os.path.join(folder,"[Ss][Tt][Oo][Cc][Kk].[Dd][Bb][Ff]"))
+        if not matches:
+            QMessageBox.warning(self,"Not Found",f"No STOCK.DBF found in:\n{folder}")
+            return
+        self._dbf_folder = folder
+        self._load_dbf(matches[0])
+
+    def _refresh(self):
+        folder=getattr(self,"_dbf_folder",self._settings.get("last_dbf_folder",""))
+        if not folder:
+            QMessageBox.information(self,"No Folder","Open a folder first."); return
+        self._load_from_folder(folder)
 
     def _load_dbf(self,path):
         self.file_lbl.setText(os.path.basename(path))
@@ -375,7 +393,7 @@ class PriceTagPrinter(QMainWindow):
         self._loader.progress.connect(lambda d,t:(self.prog.setMaximum(t),self.prog.setValue(d)))
         self._loader.done.connect(self._loaded)
         self._loader.error.connect(lambda e:(self.prog.setVisible(False),self.status.setText(""),QMessageBox.critical(self,"Load Error",e)))
-        self._loader.start(); _save_settings({"last_dbf_path":path})
+        self._loader.start()
 
     def _loaded(self,products):
         self._all=products; self._map={p["barcode"]:p for p in products}
@@ -402,20 +420,37 @@ class PriceTagPrinter(QMainWindow):
         start=self._page*self._per_page
         page_products=self._filtered[start:start+self._per_page]
         for row,p in enumerate(page_products):
-            t.insertRow(row); t.setRowHeight(row,30)
+            t.insertRow(row); t.setRowHeight(row,32)
+            bc=p["barcode"]
+            # Checkbox col 0
             chk=QTableWidgetItem()
-            chk.setData(Qt.ItemDataRole.UserRole,p["barcode"])
+            chk.setData(Qt.ItemDataRole.UserRole,bc)
             chk.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|Qt.ItemFlag.ItemIsUserCheckable)
-            chk.setCheckState(Qt.CheckState.Checked if p["barcode"] in self._selected else Qt.CheckState.Unchecked)
+            chk.setCheckState(Qt.CheckState.Checked if bc in self._selected else Qt.CheckState.Unchecked)
             chk.setTextAlignment(Qt.AlignmentFlag.AlignCenter); t.setItem(row,0,chk)
-            ni=QTableWidgetItem(p["name"]); ni.setData(Qt.ItemDataRole.UserRole+1,p["barcode"]); t.setItem(row,1,ni)
+            # Name col 1
+            ni=QTableWidgetItem(p["name"]); ni.setData(Qt.ItemDataRole.UserRole+1,bc); t.setItem(row,1,ni)
+            # Price col 2
             pi=QTableWidgetItem(f"${p['price']:.2f}"+(" +GCT" if p["gct_applicable"] else ""))
             pi.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
             pi.setForeground(QColor(AMBER_DARK)); t.setItem(row,2,pi)
+            # Discounts col 3
             disc=p.get("disc_rows",[])
             di=QTableWidgetItem(f"{disc[0][0]}+ @ {disc[0][2]}" if disc else "—")
             di.setForeground(QColor(GREEN if disc else MUTED))
             di.setTextAlignment(Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignVCenter); t.setItem(row,3,di)
+            # Qty spinbox col 4
+            qty_spin=QSpinBox(); qty_spin.setMinimum(1); qty_spin.setMaximum(999)
+            qty_spin.setValue(self._selected.get(bc,1))
+            qty_spin.setEnabled(bc in self._selected)
+            qty_spin.setStyleSheet(
+                f"QSpinBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};"
+                f"border-radius:5px;padding:0 4px;font-size:11px;}}"
+                f"QSpinBox:focus{{border-color:{AMBER};}}"
+                f"QSpinBox:disabled{{background:{WARM_WHITE};color:{MUTED};}}"
+            )
+            qty_spin.valueChanged.connect(lambda v,b=bc: self._on_qty_changed(b,v))
+            t.setCellWidget(row,4,qty_spin)
         t.blockSignals(False)
         self._pg_lbl.setText(f"Page {self._page+1} of {pages}  ({self._total:,})")
         self._pg_prev.setEnabled(self._page>0)
@@ -426,9 +461,18 @@ class PriceTagPrinter(QMainWindow):
         if item.column()!=0: return
         bc=item.data(Qt.ItemDataRole.UserRole)
         if bc is None: return
-        if item.checkState()==Qt.CheckState.Checked: self._selected.add(bc)
-        else: self._selected.discard(bc)
+        row=item.row()
+        spin=self.tbl.cellWidget(row,4)
+        if item.checkState()==Qt.CheckState.Checked:
+            self._selected[bc]=spin.value() if spin else 1
+            if spin: spin.setEnabled(True)
+        else:
+            self._selected.pop(bc,None)
+            if spin: spin.setEnabled(False)
         self._upd_sel()
+
+    def _on_qty_changed(self,bc,val):
+        if bc in self._selected: self._selected[bc]=val
 
     def _row_changed(self,cur,_prev):
         if not cur: return
@@ -441,7 +485,12 @@ class PriceTagPrinter(QMainWindow):
         t=self.tbl; t.blockSignals(True)
         for r in range(t.rowCount()):
             it=t.item(r,0)
-            if it: self._selected.add(it.data(Qt.ItemDataRole.UserRole)); it.setCheckState(Qt.CheckState.Checked)
+            if it:
+                bc=it.data(Qt.ItemDataRole.UserRole)
+                self._selected[bc]=self._selected.get(bc,1)
+                it.setCheckState(Qt.CheckState.Checked)
+                spin=t.cellWidget(r,4)
+                if spin: spin.setEnabled(True)
         t.blockSignals(False); self._upd_sel()
 
     def _clear_sel(self):
@@ -449,10 +498,14 @@ class PriceTagPrinter(QMainWindow):
         for r in range(t.rowCount()):
             it=t.item(r,0)
             if it: it.setCheckState(Qt.CheckState.Unchecked)
+            spin=t.cellWidget(r,4)
+            if spin: spin.setEnabled(False)
         t.blockSignals(False); self._upd_sel()
 
     def _upd_sel(self):
-        n=len(self._selected); self.sel_lbl.setText(f"{n} selected")
+        n=len(self._selected)
+        total=sum(self._selected.values()) if self._selected else 0
+        self.sel_lbl.setText(f"{n} selected  ({total} labels)")
         self.print_btn.setEnabled(n>0); self.pdf_btn.setEnabled(n>0)
 
     def _upd_prev(self):
@@ -467,11 +520,11 @@ class PriceTagPrinter(QMainWindow):
 
     def _do_print(self,save_pdf):
         if not self._selected: return
-        job=[]; 
-        for bc in self._selected:
+        job=[]
+        for bc,qty in self._selected.items():
             p=self._map.get(bc)
             if p:
-                for _ in range(self.copies.value()): job.append(p)
+                for _ in range(max(1,qty)): job.append(p)
         if not job: return
         entry=self.size_combo.currentData()
         if not entry: return
