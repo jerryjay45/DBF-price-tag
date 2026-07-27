@@ -34,6 +34,8 @@ _LABEL_SIZES = [
     ("Legal",  None, "Legal  (216 × 356 mm)",  True),
 ]
 _PAGE_COLS  = {"A4":3,"Letter":3,"Legal":3}
+_PAGE_LABEL_W_MM = 62
+_PAGE_LABEL_H_MM = 30
 
 class _DBFLoader(QThread):
     progress = pyqtSignal(int,int)
@@ -108,6 +110,7 @@ def _draw_label(painter, rect, product, options, preview=False):
     price_pt = 15.0
     gct_pt   = max(h_mm*0.28, 6.0)
     disc_pt  = max(h_mm*0.26, 10.0)
+    barcode_pt = max(h_mm*0.18, 6.0)
     pad=max(2.0*px_per_mm,2.0)
 
     painter.save(); painter.setClipRect(rect)
@@ -116,7 +119,7 @@ def _draw_label(painter, rect, product, options, preview=False):
     painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),max(1.5*px_per_mm,3.0),max(1.5*px_per_mm,3.0))
 
     shown_disc  = disc_rows[:2]
-    disc_h_each = h * 0.18
+    disc_h_each = h * 0.12
     disc_h      = disc_h_each*len(shown_disc) if (show_price and shown_disc) else 0
     name_avail_w = w - pad*2
 
@@ -132,7 +135,13 @@ def _draw_label(painter, rect, product, options, preview=False):
     else:
         needed_name_h = 0
 
-    remaining = h - disc_h - pad*2
+    show_barcode = options.get("show_barcode", False)
+    # barcode_pt is a font point size; convert to mm (1pt = 0.3528mm) then into this
+    # rect's own pixel space via px_per_mm, same as pad/pen_w above — using the raw
+    # point value as a pixel height (as before) breaks at real print DPI.
+    barcode_h = (barcode_pt*0.3528*1.6*px_per_mm) if show_barcode else 0
+
+    remaining = h - disc_h - barcode_h - pad*2
     name_h    = min(needed_name_h, remaining*0.55) if show_name else 0
     price_h   = remaining - name_h if show_price else 0
 
@@ -170,6 +179,13 @@ def _draw_label(painter, rect, product, options, preview=False):
             painter.drawText(tr,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter,
                              f"Discount {pct_str}")
             cur_y += disc_h_each
+
+    if show_barcode and product.get("barcode"):
+        bf = QFont("Courier New"); bf.setPointSizeF(barcode_pt)
+        painter.setFont(bf); painter.setPen(QColor("#000000"))
+        painter.drawText(QRectF(x+pad, y+h-barcode_h-pad*0.5, w-pad*2, barcode_h),
+            Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignVCenter,
+            product.get("barcode",""))
 
     painter.restore()
 
@@ -365,7 +381,8 @@ class PriceTagPrinter(QMainWindow):
         cr.addWidget(self.cols_spin); cr.addStretch(); lay.addWidget(self.cols_row)
         lay.addWidget(_dv()); lay.addWidget(_sec("Show on Label"))
         self.chk_name=_tog("Product Name"); self.chk_price=_tog("Price")
-        for c in (self.chk_name,self.chk_price):
+        self.chk_barcode=_tog("Barcode (digits)",chk=True)
+        for c in (self.chk_name,self.chk_price,self.chk_barcode):
             c.stateChanged.connect(self._upd_prev); lay.addWidget(c)
         note=QLabel("  GCT and discounts shown automatically when present in DBF.",styleSheet=f"color:{MUTED};font-size:10px;"); note.setWordWrap(True); lay.addWidget(note)
         lay.addStretch()
@@ -539,9 +556,10 @@ class PriceTagPrinter(QMainWindow):
         entry=self.size_combo.currentData()
         if not entry: return
         w_val,h_val,_,is_page=entry
-        w_mm=62 if is_page else w_val; h_mm=35 if is_page else h_val
+        w_mm=_PAGE_LABEL_W_MM if is_page else w_val; h_mm=_PAGE_LABEL_H_MM if is_page else h_val
         self.cols_row.setVisible(is_page)
         self.preview.set_options({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
+                                   "show_barcode":self.chk_barcode.isChecked(),
                                    "label_w_mm":w_mm,"label_h_mm":h_mm})
         _save_settings({"last_size_index":self.size_combo.currentIndex(),"last_cols":self.cols_spin.value()})
 
@@ -556,14 +574,15 @@ class PriceTagPrinter(QMainWindow):
         entry=self.size_combo.currentData()
         if not entry: return
         w_val,h_val,_,is_page=entry
-        opts={"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked()}
+        opts={"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
+              "show_barcode":self.chk_barcode.isChecked()}
         try:
             from PyQt6.QtPrintSupport import QPrinter,QPrintPreviewDialog
             printer=QPrinter(QPrinter.PrinterMode.HighResolution)
             printer.setColorMode(QPrinter.ColorMode.GrayScale)
             sm={"A4":QPageSize.PageSizeId.A4,"Letter":QPageSize.PageSizeId.Letter,"Legal":QPageSize.PageSizeId.Legal}
             printer.setPageLayout(QPageLayout(QPageSize(sm.get(str(w_val),QPageSize.PageSizeId.Letter)),QPageLayout.Orientation.Portrait,QMarginsF(8,8,8,8),QPageLayout.Unit.Millimeter))
-            lw=62; lh=30; cols=self.cols_spin.value()
+            lw=_PAGE_LABEL_W_MM; lh=_PAGE_LABEL_H_MM; cols=self.cols_spin.value()
             do=dict(opts,label_w_mm=lw,label_h_mm=lh)
             if save_pdf:
                 pp,_=QFileDialog.getSaveFileName(self,"Save Labels as PDF","labels.pdf","PDF Files (*.pdf)")
