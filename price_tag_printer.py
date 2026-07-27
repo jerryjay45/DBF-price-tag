@@ -88,8 +88,8 @@ def _draw_label(painter, rect, product, options, preview=False):
 
     name_pt  = max(h_mm*0.38, 7.0)
     price_pt = 15.0
-    gct_pt   = max(h_mm*0.28, 5.5)
-    disc_pt  = max(h_mm*0.28, 10.5)
+    gct_pt   = max(h_mm*0.28, 6.0)
+    disc_pt  = max(h_mm*0.26, 10.0)
     pad=max(2.0*px_per_mm,2.0)
 
     painter.save(); painter.setClipRect(rect)
@@ -98,7 +98,7 @@ def _draw_label(painter, rect, product, options, preview=False):
     painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),max(1.5*px_per_mm,3.0),max(1.5*px_per_mm,3.0))
 
     shown_disc  = disc_rows[:2]
-    disc_h_each = h * 0.22
+    disc_h_each = h * 0.18
     disc_h      = disc_h_each*len(shown_disc) if (show_price and shown_disc) else 0
     name_avail_w = w - pad*2
 
@@ -115,7 +115,7 @@ def _draw_label(painter, rect, product, options, preview=False):
         needed_name_h = 0
 
     remaining = h - disc_h - pad*2
-    name_h    = min(needed_name_h, remaining*0.45) if show_name else 0
+    name_h    = min(needed_name_h, remaining*0.55) if show_name else 0
     price_h   = remaining - name_h if show_price else 0
 
     cur_y = y + pad
@@ -221,9 +221,9 @@ def _obtn(t,h=32):
     b=QPushButton(t); b.setFixedHeight(h); b.setCursor(Qt.CursorShape.PointingHandCursor)
     b.setStyleSheet(f"QPushButton{{background:transparent;color:{LABEL_TEXT};border:1.5px solid {BORDER};border-radius:16px;font-size:11px;font-weight:600;padding:0 12px;}}QPushButton:hover{{border-color:{AMBER};color:{AMBER};}}QPushButton:disabled{{color:{MUTED};border-color:{BORDER_LIGHT};}}"); return b
 def _tbl():
-    return (f"QTableWidget{{background:{WHITE};border:none;font-size:12px;color:{DARK_CARD};}}"
+    return (f"QTableWidget{{background:{WHITE};border:none;font-size:13px;color:{DARK_CARD};}}"
             f"QTableWidget::item{{padding:6px 8px;border-bottom:1px solid {BORDER_LIGHT};}}"
-            f"QTableWidget::item:selected{{background:{AMBER_BG};color:{DARK_CARD};}}"
+            f"QTableWidget::item:selected{{background:#FEF9EC;color:{DARK_CARD};}}"
             f"QHeaderView::section{{background:{DARK};color:{AMBER};font-size:11px;font-weight:700;padding:6px 8px;border:none;border-right:1px solid {DARK_4};}}")
 
 class PriceTagPrinter(QMainWindow):
@@ -271,10 +271,9 @@ class PriceTagPrinter(QMainWindow):
         card=QFrame(); card.setStyleSheet(f"background:{WHITE};border-radius:10px;border:1px solid {BORDER};")
         lay=QVBoxLayout(card); lay.setContentsMargins(12,12,12,12); lay.setSpacing(8)
         lay.addWidget(_sec("Products"))
-        # Search with clear button
         sb=QHBoxLayout(); sb.setSpacing(4)
         self.search=QLineEdit(); self.search.setPlaceholderText("🔍  Search by name or barcode…"); self.search.setFixedHeight(34)
-        self.search.setStyleSheet(f"QLineEdit{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 10px;font-size:12px;}}QLineEdit:focus{{border-color:{AMBER};}}")
+        self.search.setStyleSheet(f"QLineEdit{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 10px;font-size:13px;}}QLineEdit:focus{{border-color:{AMBER};}}")
         self.search.textChanged.connect(self._filter)
         clr_search=QPushButton("✕"); clr_search.setFixedSize(34,34)
         clr_search.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -283,6 +282,8 @@ class PriceTagPrinter(QMainWindow):
         clr_search.clicked.connect(lambda:(self.search.clear(),self.search.setFocus()))
         sb.addWidget(self.search,stretch=1); sb.addWidget(clr_search)
         lay.addLayout(sb)
+        self.match_lbl=QLabel("",styleSheet=f"color:{MUTED};font-size:11px;padding-left:2px;")
+        lay.addWidget(self.match_lbl)
         sr=QHBoxLayout(); sr.setSpacing(6)
         sa=_obtn("☑  Select All"); sa.clicked.connect(self._sel_all)
         cl=_obtn("☐  Clear"); cl.clicked.connect(self._clear_sel)
@@ -302,10 +303,10 @@ class PriceTagPrinter(QMainWindow):
         self.tbl.verticalHeader().setVisible(False); self.tbl.setShowGrid(False)
         self.tbl.setAlternatingRowColors(True)
         self.tbl.setStyleSheet(
-            f"QTableWidget{{background:{WHITE};border:none;font-size:12px;color:{DARK_CARD};}}"
-            f"QTableWidget{{alternate-background-color:#F7F6F3;}}"
+            f"QTableWidget{{background:{WHITE};border:none;font-size:13px;color:{DARK_CARD};}}"
+            f"QTableWidget{{alternate-background-color:#F0EDE6;}}"
             f"QTableWidget::item{{padding:6px 8px;border-bottom:1px solid {BORDER_LIGHT};}}"
-            f"QTableWidget::item:selected{{background:{AMBER_BG};color:{DARK_CARD};}}"
+            f"QTableWidget::item:selected{{background:#FEF9EC;color:{DARK_CARD};}}"
             f"QHeaderView::section{{background:{DARK_CARD};color:{AMBER};font-size:11px;"
             f"font-weight:700;padding:6px 8px;border:none;border-right:1px solid #444;}}")
         self.tbl.currentItemChanged.connect(self._row_changed)
@@ -330,10 +331,10 @@ class PriceTagPrinter(QMainWindow):
         card.setStyleSheet(f"background:{WHITE};border-radius:10px;border:1px solid {BORDER};")
         lay=QVBoxLayout(card); lay.setContentsMargins(14,14,14,14); lay.setSpacing(10)
         lay.addWidget(_sec("Label Preview"))
-        self.preview=_Preview(); self.preview.setFixedHeight(170); lay.addWidget(self.preview)
+        self.preview=_Preview(); self.preview.setFixedHeight(200); lay.addWidget(self.preview)
         lay.addWidget(_dv()); lay.addWidget(_sec("Label / Page Size"))
         self.size_combo=QComboBox(); self.size_combo.setFixedHeight(34)
-        self.size_combo.setStyleSheet(f"QComboBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 10px;font-size:12px;}}QComboBox:focus{{border-color:{AMBER};}}QComboBox::drop-down{{border:none;width:20px;}}")
+        self.size_combo.setStyleSheet(f"QComboBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 10px;font-size:13px;}}QComboBox:focus{{border-color:{AMBER};}}QComboBox::drop-down{{border:none;width:20px;}}")
         for e in _LABEL_SIZES: self.size_combo.addItem(e[2],e)
         self.size_combo.setCurrentIndex(self._settings.get("last_size_index",5))
         self.size_combo.currentIndexChanged.connect(self._upd_prev); lay.addWidget(self.size_combo)
@@ -387,7 +388,7 @@ class PriceTagPrinter(QMainWindow):
 
     def _load_dbf(self,path):
         self.file_lbl.setText(os.path.basename(path))
-        self.file_lbl.setStyleSheet(f"QLineEdit{{background:{DARK_2};color:{AMBER};border:1px solid {AMBER};border-radius:7px;padding:0 10px;font-size:12px;}}")
+        self.file_lbl.setStyleSheet(f"QLineEdit{{background:{DARK_2};color:white;border:1px solid {AMBER};border-radius:7px;padding:0 10px;font-size:12px;}}")
         self.prog.setVisible(True); self.prog.setValue(0); self.status.setText("Loading…")
         self._loader=_DBFLoader(path,self)
         self._loader.progress.connect(lambda d,t:(self.prog.setMaximum(t),self.prog.setValue(d)))
@@ -399,7 +400,9 @@ class PriceTagPrinter(QMainWindow):
         self._all=products; self._map={p["barcode"]:p for p in products}
         self._selected.clear(); self.prog.setVisible(False)
         self._page=0
-        self.status.setText(f"Loaded {len(products):,} products"); self._filter()
+        self.status.setText(f"Loaded {len(products):,} products")
+        self.match_lbl.setText(f"{len(products):,} products")
+        self._filter()
 
     def _filter(self):
         q=self.search.text().strip().lower()
@@ -420,7 +423,7 @@ class PriceTagPrinter(QMainWindow):
         start=self._page*self._per_page
         page_products=self._filtered[start:start+self._per_page]
         for row,p in enumerate(page_products):
-            t.insertRow(row); t.setRowHeight(row,32)
+            t.insertRow(row); t.setRowHeight(row,38)
             bc=p["barcode"]
             # Checkbox col 0
             chk=QTableWidgetItem()
@@ -433,11 +436,12 @@ class PriceTagPrinter(QMainWindow):
             # Price col 2
             pi=QTableWidgetItem(f"${p['price']:.2f}"+(" +GCT" if p["gct_applicable"] else ""))
             pi.setTextAlignment(Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter)
+            f=pi.font(); f.setBold(True); pi.setFont(f)
             pi.setForeground(QColor(AMBER_DARK)); t.setItem(row,2,pi)
             # Discounts col 3
             disc=p.get("disc_rows",[])
             di=QTableWidgetItem(f"{disc[0][0]}+ @ {disc[0][2]}" if disc else "—")
-            di.setForeground(QColor(GREEN if disc else MUTED))
+            di.setForeground(QColor(GREEN) if disc else QColor("#C8C4BC"))
             di.setTextAlignment(Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignVCenter); t.setItem(row,3,di)
             # Qty spinbox col 4
             qty_spin=QSpinBox(); qty_spin.setMinimum(1); qty_spin.setMaximum(999)
@@ -452,6 +456,11 @@ class PriceTagPrinter(QMainWindow):
             qty_spin.valueChanged.connect(lambda v,b=bc: self._on_qty_changed(b,v))
             t.setCellWidget(row,4,qty_spin)
         t.blockSignals(False)
+        q = self.search.text().strip()
+        if q:
+            self.match_lbl.setText(f"{self._total:,} match{'es' if self._total != 1 else ''} for \"{q}\"")
+        else:
+            self.match_lbl.setText(f"{self._total:,} products")
         self._pg_lbl.setText(f"Page {self._page+1} of {pages}  ({self._total:,})")
         self._pg_prev.setEnabled(self._page>0)
         self._pg_next.setEnabled(self._page<pages-1)
