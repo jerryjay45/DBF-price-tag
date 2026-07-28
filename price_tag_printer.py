@@ -108,7 +108,7 @@ def _draw_label(painter, rect, product, options, preview=False):
 
     name_pt  = max(h_mm*0.38, 7.0)
     price_pt = 15.0
-    gct_pt   = max(h_mm*0.28, 10.0)
+    gct_pt   = max(h_mm*0.28, 12.0)
     disc_pt  = max(h_mm*0.28, 8.0)
     barcode_pt = max(h_mm*0.18, 6.0)
     pad=max(2.0*px_per_mm,2.0)
@@ -162,7 +162,7 @@ def _draw_label(painter, rect, product, options, preview=False):
             Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,price_str)
         if gct_ok:
             gf=QFont("Arial"); gf.setPointSizeF(gct_pt); gf.setBold(True)
-            painter.setFont(gf); painter.setPen(QColor("#555555"))
+            painter.setFont(gf); painter.setPen(QColor("#000000"))
             painter.drawText(QRectF(x+pad+price_px+pad*0.4,cur_y+price_h*0.20,
                 w-pad*2-price_px-pad,price_h*0.65),
                 Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,"+GCT")
@@ -172,7 +172,7 @@ def _draw_label(painter, rect, product, options, preview=False):
             font=QFont("Arial"); font.setPointSizeF(disc_pt); font.setBold(True)
             painter.setFont(font)
             tr=QRectF(x+pad,cur_y,w-pad*2,disc_h_each)
-            painter.setPen(QColor("#222222"))
+            painter.setPen(QColor("#000000"))
             painter.drawText(tr,Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,
                              f"{min_qty} \u2192 ${disc_price:.2f}")
             painter.setPen(QColor("#444444"))
