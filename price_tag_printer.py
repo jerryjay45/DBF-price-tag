@@ -106,10 +106,10 @@ def _draw_label(painter, rect, product, options, preview=False):
     w_mm=options.get("label_w_mm",50); h_mm=options.get("label_h_mm",30)
     px_per_mm=w/max(w_mm,1)
 
-    name_pt  = max(h_mm*0.38, 7.0)
-    price_pt = 15.0
+    name_pt  = max(h_mm*0.38, 14.0)
+    price_pt = 14.0
     gct_pt   = max(h_mm*0.28, 12.0)
-    disc_pt  = max(h_mm*0.28, 8.0)
+    disc_pt  = max(h_mm*0.28, 10.0)
     barcode_pt = max(h_mm*0.18, 6.0)
     pad=max(2.0*px_per_mm,2.0)
 
@@ -118,7 +118,7 @@ def _draw_label(painter, rect, product, options, preview=False):
     painter.setPen(QPen(QColor("#000000"),pen_w)); painter.setBrush(QBrush(QColor("#ffffff")))
     painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),max(1.5*px_per_mm,3.0),max(1.5*px_per_mm,3.0))
 
-    shown_disc  = disc_rows[:2]
+    shown_disc  = disc_rows[:1]
     disc_h_each = h * 0.12
     disc_h      = disc_h_each*len(shown_disc) if (show_price and shown_disc) else 0
     name_avail_w = w - pad*2
@@ -174,10 +174,7 @@ def _draw_label(painter, rect, product, options, preview=False):
             tr=QRectF(x+pad,cur_y,w-pad*2,disc_h_each)
             painter.setPen(QColor("#000000"))
             painter.drawText(tr,Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,
-                             f"{min_qty} \u2192 ${disc_price:.2f}")
-            painter.setPen(QColor("#444444"))
-            painter.drawText(tr,Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter,
-                             f"Discount {pct_str}")
+                             f"Buy {min_qty} get 1 for ${disc_price:.2f}")
             cur_y += disc_h_each
 
     if show_barcode and product.get("barcode"):
