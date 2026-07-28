@@ -106,9 +106,9 @@ def _draw_label(painter, rect, product, options, preview=False):
     w_mm=options.get("label_w_mm",50); h_mm=options.get("label_h_mm",30)
     px_per_mm=w/max(w_mm,1)
 
-    name_pt  = max(h_mm*0.38, 14.0)
-    price_pt = 14.0
-    gct_pt   = max(h_mm*0.28, 12.0)
+    name_pt  = max(h_mm*0.38, 14.5)
+    price_pt = 12.5
+    gct_pt   = max(h_mm*0.28, 11.0)
     disc_pt  = max(h_mm*0.28, 10.0)
     barcode_pt = max(h_mm*0.18, 6.0)
     pad=max(2.0*px_per_mm,2.0)
@@ -174,7 +174,7 @@ def _draw_label(painter, rect, product, options, preview=False):
             tr=QRectF(x+pad,cur_y,w-pad*2,disc_h_each)
             painter.setPen(QColor("#000000"))
             painter.drawText(tr,Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignVCenter,
-                             f"Buy {min_qty} get 1 for ${disc_price:.2f}")
+                             f"BUY {min_qty} GET 1 FOR ${disc_price:.2f}")
             cur_y += disc_h_each
 
     if show_barcode and product.get("barcode"):
