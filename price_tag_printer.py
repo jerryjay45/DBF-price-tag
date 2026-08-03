@@ -35,7 +35,7 @@ _LABEL_SIZES = [
 ]
 _PAGE_COLS  = {"A4":3,"Letter":3,"Legal":3}
 _PAGE_LABEL_W_MM = 62
-_PAGE_LABEL_H_MM = 30
+_PAGE_LABEL_H_MM = 32
 
 class _DBFLoader(QThread):
     progress = pyqtSignal(int,int)
@@ -110,7 +110,7 @@ def _draw_label(painter, rect, product, options, preview=False):
     price_pt = 14.0
     gct_pt   = max(h_mm*0.28, 10.0)
     disc_pt  = max(h_mm*0.28, 12.0)
-    barcode_pt = max(h_mm*0.18, 6.0)
+    barcode_pt = max(h_mm*0.18, 8.0)
     pad=max(2.0*px_per_mm,2.0)
 
     painter.save(); painter.setClipRect(rect)
