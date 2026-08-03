@@ -555,6 +555,9 @@ class PriceTagPrinter(QMainWindow):
         w_val,h_val,_,is_page=entry
         w_mm=_PAGE_LABEL_W_MM if is_page else w_val; h_mm=_PAGE_LABEL_H_MM if is_page else h_val
         self.cols_row.setVisible(is_page)
+        if is_page:
+            max_cols=_PAGE_COLS.get(w_val,3)
+            self.cols_spin.setMaximum(max_cols)  # QSpinBox auto-clamps current value if it exceeds this
         self.preview.set_options({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
                                    "show_barcode":self.chk_barcode.isChecked(),
                                    "label_w_mm":w_mm,"label_h_mm":h_mm})
@@ -580,6 +583,11 @@ class PriceTagPrinter(QMainWindow):
             sm={"A4":QPageSize.PageSizeId.A4,"Letter":QPageSize.PageSizeId.Letter,"Legal":QPageSize.PageSizeId.Legal}
             printer.setPageLayout(QPageLayout(QPageSize(sm.get(str(w_val),QPageSize.PageSizeId.Letter)),QPageLayout.Orientation.Portrait,QMarginsF(8,8,8,8),QPageLayout.Unit.Millimeter))
             lw=_PAGE_LABEL_W_MM; lh=_PAGE_LABEL_H_MM; cols=self.cols_spin.value()
+            max_cols=_PAGE_COLS.get(w_val,3)
+            if is_page and cols>max_cols:
+                QMessageBox.warning(self,"Columns adjusted",
+                    f"{cols} columns won't fit on {w_val} at this label width — using {max_cols} instead.")
+                cols=max_cols; self.cols_spin.setValue(max_cols)
             do=dict(opts,label_w_mm=lw,label_h_mm=lh)
             if save_pdf:
                 pp,_=QFileDialog.getSaveFileName(self,"Save Labels as PDF","labels.pdf","PDF Files (*.pdf)")
