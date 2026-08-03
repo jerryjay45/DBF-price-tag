@@ -615,13 +615,14 @@ class PriceTagPrinter(QMainWindow):
         try:
             pr=printer.pageRect(QPrinter.Unit.DevicePixel); dpi=printer.resolution(); ppm=dpi/25.4
             lw_px=lw*ppm; lh_px=lh*ppm; gap=3*ppm
+            safety_px=3*ppm  # buffer against printer/driver margin rounding — trades ~1 row/page for reliability
             x0=pr.left(); y0=pr.top(); col=0; ry=y0
             for i,d in enumerate(job):
                 _draw_label(painter,QRectF(x0+col*(lw_px+gap),ry,lw_px,lh_px),d,opts)
                 col+=1
                 if col>=cols:
                     col=0; ry+=lh_px+gap
-                    if ry+lh_px>pr.bottom() and i<len(job)-1: printer.newPage(); ry=y0
+                    if ry+lh_px>pr.bottom()-safety_px and i<len(job)-1: printer.newPage(); ry=y0
         finally:
             painter.end()
 
