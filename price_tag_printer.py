@@ -18,7 +18,10 @@ DARK="#1C1A17"; DARK_2="#242220"; DARK_4="#3D3A35"; DARK_CARD="#2C2A27"
 WHITE="#FFFFFF"; WARM_WHITE="#FAFAF8"; BORDER="#E5E2DC"; BORDER_LIGHT="#F0EDE8"
 MUTED="#9C9890"; LABEL_TEXT="#6B6860"; GREEN="#16A34A"; GREEN_LIGHT="#DCFCE7"
 
-_SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_tag_settings.json")
+_SETTINGS_DIR = os.getenv("APPDATA") or os.path.join(os.path.expanduser("~"), ".config")
+_SETTINGS_DIR = os.path.join(_SETTINGS_DIR, "PriceTagPrinter")
+os.makedirs(_SETTINGS_DIR, exist_ok=True)
+_SETTINGS_FILE = os.path.join(_SETTINGS_DIR, "price_tag_settings.json")
 def _load_settings():
     try: return json.load(open(_SETTINGS_FILE))
     except: return {}
@@ -380,11 +383,12 @@ class PriceTagPrinter(QMainWindow):
         self.cols_spin.setStyleSheet(f"QSpinBox{{background:{WHITE};color:{DARK_CARD};border:1px solid {BORDER};border-radius:7px;padding:0 8px;font-size:12px;}}QSpinBox:focus{{border-color:{AMBER};}}")
         cr.addWidget(self.cols_spin); cr.addStretch(); lay.addWidget(self.cols_row)
         lay.addWidget(_dv()); lay.addWidget(_sec("Show on Label"))
-        self.chk_name=_tog("Product Name"); self.chk_price=_tog("Price")
-        self.chk_barcode=_tog("Barcode (digits)",chk=True)
-        self.chk_disc2=_tog("2nd Discount Tier",chk=False)
+        self.chk_name=_tog("Product Name",chk=self._settings.get("show_name",True))
+        self.chk_price=_tog("Price",chk=self._settings.get("show_price",True))
+        self.chk_barcode=_tog("Barcode (digits)",chk=self._settings.get("show_barcode",True))
+        self.chk_disc2=_tog("2nd Discount Tier",chk=self._settings.get("disc2",False))
         for c in (self.chk_name,self.chk_price,self.chk_barcode,self.chk_disc2):
-            c.stateChanged.connect(self._upd_prev); lay.addWidget(c)
+            c.stateChanged.connect(self._on_toggle_changed); lay.addWidget(c)
         note=QLabel("  GCT and discounts shown automatically when present in DBF.",styleSheet=f"color:{MUTED};font-size:10px;"); note.setWordWrap(True); lay.addWidget(note)
         lay.addStretch()
         self.status=QLabel("",styleSheet=f"color:{GREEN};font-size:11px;"); self.status.setWordWrap(True)
@@ -552,6 +556,11 @@ class PriceTagPrinter(QMainWindow):
         total=sum(self._selected.values()) if self._selected else 0
         self.sel_lbl.setText(f"{n} selected  ({total} labels)")
         self.print_btn.setEnabled(n>0); self.pdf_btn.setEnabled(n>0)
+
+    def _on_toggle_changed(self):
+        _save_settings({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
+                         "show_barcode":self.chk_barcode.isChecked(),"disc2":self.chk_disc2.isChecked()})
+        self._upd_prev()
 
     def _upd_prev(self):
         entry=self.size_combo.currentData()
