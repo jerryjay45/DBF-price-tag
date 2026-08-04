@@ -148,9 +148,12 @@ def _draw_label(painter, rect, product, options, preview=False):
     cur_y = y + pad
 
     if show_name and name:
+        painter.save()
+        painter.setClipRect(QRectF(x+pad,cur_y,name_avail_w,name_h))
         painter.setPen(QColor("#000000"))
         painter.drawText(QRectF(x+pad,cur_y,name_avail_w,name_h),
             Qt.AlignmentFlag.AlignLeft|Qt.AlignmentFlag.AlignTop|Qt.TextFlag.TextWordWrap,name)
+        painter.restore()
         cur_y += name_h
 
     if show_price:
