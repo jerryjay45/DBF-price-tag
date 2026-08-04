@@ -119,7 +119,8 @@ def _draw_label(painter, rect, product, options, preview=False):
     painter.save(); painter.setClipRect(rect)
     pen_w=max(0.35*px_per_mm,0.8)
     painter.setPen(QPen(QColor("#000000"),pen_w)); painter.setBrush(QBrush(QColor("#ffffff")))
-    painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),max(1.5*px_per_mm,3.0),max(1.5*px_per_mm,3.0))
+    corner_r=max(1.5*px_per_mm,3.0) if options.get("rounded_corners",True) else 0
+    painter.drawRoundedRect(rect.adjusted(pen_w,pen_w,-pen_w,-pen_w),corner_r,corner_r)
 
     shown_disc  = disc_rows[:options.get("max_disc_rows",1)]
     disc_h_each = h * 0.12
@@ -223,7 +224,7 @@ def _draw_barcode_bars(painter,rect,text,preview=False,num_pt=5.0):
 class _Preview(QWidget):
     def __init__(self,parent=None):
         super().__init__(parent); self._p=None
-        self._o={"show_name":True,"show_price":True,"show_barcode":True,"max_disc_rows":1,"label_w_mm":50,"label_h_mm":30}
+        self._o={"show_name":True,"show_price":True,"show_barcode":True,"max_disc_rows":1,"rounded_corners":True,"label_w_mm":50,"label_h_mm":30}
         self.setStyleSheet(f"background:{WARM_WHITE};border:1px solid {BORDER};border-radius:8px;")
         self.setMinimumHeight(170)
     def set_product(self,d): self._p=d; self.update()
@@ -387,7 +388,8 @@ class PriceTagPrinter(QMainWindow):
         self.chk_price=_tog("Price",chk=self._settings.get("show_price",True))
         self.chk_barcode=_tog("Barcode (digits)",chk=self._settings.get("show_barcode",True))
         self.chk_disc2=_tog("2nd Discount Tier",chk=self._settings.get("disc2",False))
-        for c in (self.chk_name,self.chk_price,self.chk_barcode,self.chk_disc2):
+        self.chk_rounded=_tog("Rounded Corners",chk=self._settings.get("rounded_corners",True))
+        for c in (self.chk_name,self.chk_price,self.chk_barcode,self.chk_disc2,self.chk_rounded):
             c.stateChanged.connect(self._on_toggle_changed); lay.addWidget(c)
         note=QLabel("  GCT and discounts shown automatically when present in DBF.",styleSheet=f"color:{MUTED};font-size:10px;"); note.setWordWrap(True); lay.addWidget(note)
         lay.addStretch()
@@ -559,7 +561,8 @@ class PriceTagPrinter(QMainWindow):
 
     def _on_toggle_changed(self):
         _save_settings({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
-                         "show_barcode":self.chk_barcode.isChecked(),"disc2":self.chk_disc2.isChecked()})
+                         "show_barcode":self.chk_barcode.isChecked(),"disc2":self.chk_disc2.isChecked(),
+                         "rounded_corners":self.chk_rounded.isChecked()})
         self._upd_prev()
 
     def _upd_prev(self):
@@ -574,6 +577,7 @@ class PriceTagPrinter(QMainWindow):
         self.preview.set_options({"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
                                    "show_barcode":self.chk_barcode.isChecked(),
                                    "max_disc_rows":2 if self.chk_disc2.isChecked() else 1,
+                                   "rounded_corners":self.chk_rounded.isChecked(),
                                    "label_w_mm":w_mm,"label_h_mm":h_mm})
         _save_settings({"last_size_index":self.size_combo.currentIndex(),"last_cols":self.cols_spin.value()})
 
@@ -590,7 +594,8 @@ class PriceTagPrinter(QMainWindow):
         w_val,h_val,_,is_page=entry
         opts={"show_name":self.chk_name.isChecked(),"show_price":self.chk_price.isChecked(),
               "show_barcode":self.chk_barcode.isChecked(),
-              "max_disc_rows":2 if self.chk_disc2.isChecked() else 1}
+              "max_disc_rows":2 if self.chk_disc2.isChecked() else 1,
+              "rounded_corners":self.chk_rounded.isChecked()}
         try:
             from PyQt6.QtPrintSupport import QPrinter,QPrintPreviewDialog
             printer=QPrinter(QPrinter.PrinterMode.HighResolution)
