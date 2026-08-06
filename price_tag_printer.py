@@ -2,7 +2,7 @@
 price_tag_printer.py — Standalone Price Tag Printer (reads DBF directly)
 """
 from __future__ import annotations
-import sys, os, json
+import sys, os, json, shutil, tempfile
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -52,11 +52,23 @@ class _DBFLoader(QThread):
         except ImportError:
             self.error.emit("dbfread not installed.\nRun: pip install dbfread"); return
         try:
-            # ignorecase=False: dbfread otherwise does a case-insensitive filename
-            # match, which silently substitutes a different DBF if one exists in
-            # the same folder differing only by case (e.g. STOCK.DBF vs stock.DBF).
-            recs = list(DBF(self.path, lowernames=True, ignore_missing_memofile=True,
-                             ignorecase=False))
+            # dbfread does one read() call per field, per record (not a bulk
+            # read) — over SMB that's potentially millions of small network
+            # round-trips instead of a handful of buffered local reads. Copy
+            # the file to local disk first (one bulk transfer) and parse the
+            # local copy instead, so the slow part is a single sequential
+            # transfer rather than thousands of tiny latency-bound reads.
+            tmp_dir = tempfile.mkdtemp(prefix="ptp_dbf_")
+            local_path = os.path.join(tmp_dir, os.path.basename(self.path))
+            try:
+                shutil.copyfile(self.path, local_path)
+                # ignorecase=False: dbfread otherwise does a case-insensitive filename
+                # match, which silently substitutes a different DBF if one exists in
+                # the same folder differing only by case (e.g. STOCK.DBF vs stock.DBF).
+                recs = list(DBF(local_path, lowernames=True, ignore_missing_memofile=True,
+                                 ignorecase=False))
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
             result = []
             for i,rec in enumerate(recs):
                 self.progress.emit(i+1, len(recs))
